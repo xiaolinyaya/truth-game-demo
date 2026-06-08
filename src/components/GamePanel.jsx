@@ -1,411 +1,654 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-// ── Question bank data ──────────────────────────────────────────────
-const QUESTIONS = [
-  { level: 1, text: '你最开心的一天是哪天？' },
-  { level: 1, text: '你觉得我是什么样的人？' },
-  { level: 2, text: '你有没有对我说过谎？' },
-  { level: 2, text: '你最害怕失去什么？' },
-  { level: 3, text: '你最不想让我知道的事？' },
-  { level: 3, text: '你梦到过我吗？' },
+// ── Question pool ────────────────────────────────────────────────────
+const QUESTION_POOL = [
+  { minPercent: 0, text: '你最开心的一天是哪天？' },
+  { minPercent: 0, text: '你觉得我是什么样的人？' },
+  { minPercent: 0, text: '你最喜欢自己什么？' },
+  { minPercent: 0, text: '你最珍贵的回忆是什么？' },
+  { minPercent: 0, text: '你小时候的梦想是什么？' },
+  { minPercent: 0, text: '如果可以去任何地方，你想去哪？' },
+  { minPercent: 100, text: '你有没有对我说过谎？' },
+  { minPercent: 100, text: '你最害怕失去什么？' },
+  { minPercent: 100, text: '你最后一次哭是什么时候？' },
+  { minPercent: 100, text: '你有什么后悔的事吗？' },
+  { minPercent: 100, text: '你最想改变自己什么？' },
+  { minPercent: 100, text: '你心里的秘密基地在哪里？' },
+  { minPercent: 200, text: '你最不想让我知道的事？' },
+  { minPercent: 200, text: '你梦到过我吗？' },
+  { minPercent: 200, text: '你最深处的秘密是什么？' },
+  { minPercent: 200, text: '你上次感到真正孤独是什么时候？' },
+  { minPercent: 200, text: '你做过最疯狂的事是什么？' },
+  { minPercent: 400, text: '你对我动过心吗？' },
+  { minPercent: 400, text: '如果只剩一天，你想和谁度过？' },
+  { minPercent: 400, text: '你有没有想过如果我们之间...' },
 ];
 
-const LOCKED_QUESTIONS = [
-  { level: 5, text: '你对我动过心吗？' },
-  { level: 5, text: '如果只剩一天，你想和谁度过？' },
-];
+// ── SVG Wheel constants ─────────────────────────────────────────────
+const WHEEL_SIZE = 190;
+const WHEEL_R = 85;
+const WHEEL_CX = WHEEL_SIZE / 2;
+const WHEEL_CY = WHEEL_SIZE / 2;
+const RIGHT_PATH = `M${WHEEL_CX},${WHEEL_CY} L${WHEEL_CX},${WHEEL_CY - WHEEL_R} A${WHEEL_R},${WHEEL_R} 0 0,1 ${WHEEL_CX},${WHEEL_CY + WHEEL_R} Z`;
+const LEFT_PATH = `M${WHEEL_CX},${WHEEL_CY} L${WHEEL_CX},${WHEEL_CY + WHEEL_R} A${WHEEL_R},${WHEEL_R} 0 0,1 ${WHEEL_CX},${WHEEL_CY - WHEEL_R} Z`;
 
-// ── Drunkenness bar sub-component ───────────────────────────────────
-function DrunkennessBar({ drunkLevel, drunkProgress, onGiftWine }) {
+// ── Helper: pick N random items from pool ───────────────────────────
+function pickRandom(pool, n) {
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, Math.min(n, shuffled.length));
+}
+
+// ── Helper: heat level status name by percentage ────────────────────
+function getHeatStatus(percent) {
+  if (percent >= 100) return 'Lost in the Night';
+  if (percent >= 80) return 'After Midnight';
+  if (percent >= 60) return 'Midnight Mood';
+  if (percent >= 40) return 'Tipsy';
+  if (percent >= 20) return 'Relax';
+  return 'Warm Up';
+}
+
+// ── Not Enough Drinks Popup ─────────────────────────────────────────
+function NotEnoughPopup({ visible, onClose, characterName }) {
+  if (!visible) return null;
   return (
-    <div style={drunkBarStyles.container}>
-      <span style={drunkBarStyles.icon}>🍷</span>
-      <div style={drunkBarStyles.barOuter}>
-        <div
-          style={{
-            ...drunkBarStyles.barInner,
-            width: `${Math.min(100, Math.max(0, drunkProgress))}%`,
-          }}
-        />
+    <>
+      <div style={popupS.overlay} onClick={onClose} />
+      <div style={popupS.container}>
+        <button style={popupS.closeBtn} onClick={onClose}>✕</button>
+        <div style={popupS.emoji}>🍷</div>
+        <h3 style={popupS.title}>Not Enough Drinks</h3>
+        <p style={popupS.text}>
+          {characterName}'s glass is empty — top it up to keep going.
+        </p>
+        <button style={popupS.actionBtn} onClick={onClose}>
+          Get More
+        </button>
       </div>
-      <span style={drunkBarStyles.label}>Lv.{drunkLevel}</span>
-      <button style={drunkBarStyles.giftBtn} onClick={onGiftWine}>
-        送酒
-      </button>
-    </div>
+    </>
   );
 }
 
-const drunkBarStyles = {
+const popupS = {
+  overlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.6)',
+    zIndex: 20,
+  },
   container: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: '280px',
+    background: 'linear-gradient(180deg, #2d1520 0%, #1a0a0a 100%)',
+    borderRadius: '20px',
+    padding: '28px 24px',
+    zIndex: 21,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '12px',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: '12px',
+    right: '12px',
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    background: 'rgba(255, 255, 255, 0.08)',
+    border: 'none',
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: '12px',
+    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    padding: '8px 16px',
-    background: 'rgba(255,255,255,0.04)',
-    borderRadius: '10px',
-    margin: '0 16px 8px',
+    justifyContent: 'center',
+    lineHeight: 1,
   },
-  icon: { fontSize: '18px' },
-  barOuter: {
-    flex: 1,
-    height: '8px',
-    background: 'rgba(255,255,255,0.1)',
-    borderRadius: '4px',
-    overflow: 'hidden',
+  emoji: { fontSize: '40px' },
+  title: {
+    fontSize: '17px',
+    fontWeight: 700,
+    color: '#ffd6dd',
+    margin: 0,
   },
-  barInner: {
-    height: '100%',
-    background: 'linear-gradient(90deg, #e85d75, #ff8fa3)',
-    borderRadius: '4px',
-    transition: 'width 0.4s ease',
-  },
-  label: {
-    fontSize: '12px',
-    fontWeight: '700',
-    color: '#ff8fa3',
-    minWidth: '32px',
+  text: {
+    fontSize: '13px',
+    color: 'rgba(255, 255, 255, 0.55)',
+    lineHeight: 1.5,
     textAlign: 'center',
+    margin: 0,
   },
-  giftBtn: {
-    fontSize: '12px',
-    fontWeight: '600',
-    color: '#fff',
+  actionBtn: {
+    marginTop: '4px',
+    padding: '10px 32px',
     background: 'linear-gradient(135deg, #e85d75, #c94060)',
     border: 'none',
-    borderRadius: '12px',
-    padding: '4px 12px',
+    borderRadius: '22px',
+    color: '#fff',
+    fontSize: '15px',
+    fontWeight: 700,
     cursor: 'pointer',
-    whiteSpace: 'nowrap',
+    boxShadow: '0 4px 16px rgba(232, 93, 117, 0.35)',
   },
 };
 
 // ── Main GamePanel component ────────────────────────────────────────
 export default function GamePanel({
-  panelState = 'roulette',
-  demoMode = 'A',
-  drunkLevel = 3,
-  drunkProgress = 50,
+  drunkPercent = 0,
+  drinkInventory = 5,
   onRouletteResult,
   onSelectQuestion,
   onClose,
   onGiftWine,
   visible = false,
+  characterName = 'Prisoner',
+  roleCardName = 'Kate',
+  anchorRef,
 }) {
-  // ── Roulette state ──────────────────────────────────────────────
-  const [spinning, setSpinning] = useState(false);
-  const [highlightIndex, setHighlightIndex] = useState(0); // 0 = user, 1 = character
-  const spinTimer = useRef(null);
-  const stepTimer = useRef(null);
+  // ── Wheel state ───────────────────────────────────────────────────
+  const [wheelPhase, setWheelPhase] = useState('idle');
+  const [resultTarget, setResultTarget] = useState(null);
+  const [wheelRotation, setWheelRotation] = useState(0);
+  const spinTimerRef = useRef(null);
+  const panelRef = useRef(null);
 
-  // ── Question bank state ─────────────────────────────────────────
+  // ── Close animation state ─────────────────────────────────────────
+  const [closing, setClosing] = useState(false);
+  const [closeStyle, setCloseStyle] = useState({});
+  const closingTimerRef = useRef(null);
+
+  // ── Question bank state ───────────────────────────────────────────
+  const [showQuestionBank, setShowQuestionBank] = useState(false);
+  const [displayedQuestions, setDisplayedQuestions] = useState([]);
   const [selectedQuestion, setSelectedQuestion] = useState(null);
-  const [customQuestion, setCustomQuestion] = useState('');
+  const [inputValue, setInputValue] = useState('');
 
-  // Reset internal state when panel opens / changes state
+  // ── Not Enough Drinks popup ───────────────────────────────────────
+  const [showNotEnough, setShowNotEnough] = useState(false);
+
+  // ── Toast state ───────────────────────────────────────────────────
+  const [toastText, setToastText] = useState('');
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastTimerRef = useRef(null);
+
+  const showToast = useCallback((text) => {
+    setToastText(text);
+    setToastVisible(true);
+    clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastVisible(false), 2000);
+  }, []);
+
+  const refreshQuestions = useCallback(() => {
+    setDisplayedQuestions(pickRandom(
+      QUESTION_POOL.filter((q) => q.minPercent <= drunkPercent),
+      5
+    ));
+    setSelectedQuestion(null);
+  }, [drunkPercent]);
+
+  // ── Reset internal state when panel opens ──────────────────────────
   useEffect(() => {
     if (visible) {
-      setSpinning(false);
+      setWheelPhase('idle');
+      setResultTarget(null);
+      setWheelRotation(0);
+      setShowQuestionBank(false);
       setSelectedQuestion(null);
-      setCustomQuestion('');
-      setHighlightIndex(0);
+      setInputValue('');
+      setShowNotEnough(false);
     }
     return () => {
-      clearTimeout(spinTimer.current);
-      clearInterval(stepTimer.current);
+      clearTimeout(spinTimerRef.current);
+      clearTimeout(closingTimerRef.current);
+      clearTimeout(toastTimerRef.current);
     };
-  }, [visible, panelState]);
+  }, [visible]);
 
-  // ── Roulette spin logic ─────────────────────────────────────────
-  const startSpin = useCallback(() => {
-    if (spinning) return;
-    setSpinning(true);
+  // ── Close with shrink-to-anchor animation ─────────────────────────
+  const handleClose = useCallback(() => {
+    if (closing) return;
+    const btn = anchorRef?.current;
+    const panel = panelRef.current;
+    if (btn && panel) {
+      const btnRect = btn.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const panelCX = panelRect.left + panelRect.width / 2;
+      const panelCY = panelRect.top + panelRect.height / 2;
+      const btnCX = btnRect.left + btnRect.width / 2;
+      const btnCY = btnRect.top + btnRect.height / 2;
+      const dx = btnCX - panelCX;
+      const dy = btnCY - panelCY;
+      const targetScale = btnRect.width / panelRect.width;
 
-    let step = 0;
-    const totalSteps = 14 + Math.floor(Math.random() * 6); // 14-19 bounces
-    // Demo always lands on character for better showcase
-    const landOnCharacter = Math.random() < 0.7;
-    const finalIndex = landOnCharacter ? 1 : 0;
+      setCloseStyle({
+        transform: `translate(${dx}px, ${dy}px) scale(${targetScale})`,
+        opacity: 0,
+        borderRadius: '50%',
+      });
+      setClosing(true);
 
-    // Make sure total steps parity matches the final index
-    let adjustedSteps = totalSteps;
-    if (adjustedSteps % 2 !== finalIndex) {
-      adjustedSteps += 1;
+      closingTimerRef.current = setTimeout(() => {
+        setClosing(false);
+        setCloseStyle({});
+        onClose?.();
+      }, 420);
+    } else {
+      onClose?.();
     }
+  }, [closing, anchorRef, onClose]);
 
-    // Start with fast bouncing, then slow down
-    const bounce = () => {
-      step += 1;
-      setHighlightIndex((prev) => (prev === 0 ? 1 : 0));
-
-      if (step >= adjustedSteps) {
-        // Done spinning
-        clearInterval(stepTimer.current);
-        setSpinning(false);
-
-        // Wait 1 second then notify parent
-        spinTimer.current = setTimeout(() => {
-          if (finalIndex === 1) {
-            onRouletteResult?.('character');
-          } else {
-            onRouletteResult?.('user');
-          }
-        }, 1000);
-        return;
-      }
-
-      // Gradually slow down: recalculate interval for next step
-      const progress = step / adjustedSteps;
-      const nextInterval = 100 + progress * 400; // 100ms → 500ms
-      clearInterval(stepTimer.current);
-      stepTimer.current = setTimeout(bounce, nextInterval);
-    };
-
-    // Initial kick
-    setHighlightIndex(0);
-    stepTimer.current = setTimeout(bounce, 120);
-  }, [spinning, onRouletteResult]);
-
-  // ── Confirm question ────────────────────────────────────────────
-  const handleConfirm = () => {
-    const question = customQuestion.trim() || selectedQuestion;
-    if (question) {
-      onSelectQuestion?.(question);
+  // ── Send drink handler (with Not Enough popup) ────────────────────
+  const handleSendDrink = useCallback(() => {
+    if (drinkInventory <= 0) {
+      setShowNotEnough(true);
+      return;
     }
+    onGiftWine?.();
+  }, [drinkInventory, onGiftWine]);
+
+  // ── Spin logic ────────────────────────────────────────────────────
+  const handleSpinClick = useCallback(() => {
+    if (drunkPercent < 20) {
+      showToast(`${characterName} needs to be at least 20% heated up to spin.`);
+      return;
+    }
+    if (wheelPhase !== 'idle') return;
+    setWheelPhase('spinning');
+    setResultTarget(null);
+    setShowQuestionBank(false);
+
+    const landOnCharacter = Math.random() < 0.5;
+    const spins = 4 + Math.floor(Math.random() * 2);
+    const offset = (Math.random() - 0.5) * 50;
+    const targetAngle = landOnCharacter ? 90 + offset : 270 + offset;
+    const totalRotation = spins * 360 + targetAngle;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setWheelRotation(totalRotation);
+      });
+    });
+
+    spinTimerRef.current = setTimeout(() => {
+      setWheelPhase('result');
+      setResultTarget(landOnCharacter ? 'character' : 'user');
+    }, 2200);
+  }, [wheelPhase, drunkPercent, characterName, showToast]);
+
+  // ── Handle roulette result button click ───────────────────────────
+  const handleResultAction = useCallback(() => {
+    if (resultTarget === 'character') {
+      setShowQuestionBank(true);
+      setDisplayedQuestions(pickRandom(
+        QUESTION_POOL.filter((q) => q.minPercent <= drunkPercent),
+        5
+      ));
+      setSelectedQuestion(null);
+      setInputValue('');
+    } else if (resultTarget === 'user') {
+      onRouletteResult?.('user');
+    }
+  }, [resultTarget, onRouletteResult, drunkPercent]);
+
+  // ── Question bank handlers ────────────────────────────────────────
+  const handleSelectOption = (text) => {
+    setSelectedQuestion(text);
   };
 
-  // ── Determine which questions are available ─────────────────────
-  const availableQuestions = QUESTIONS.filter((q) => q.level <= drunkLevel);
-  const unavailableQuestions = QUESTIONS.filter((q) => q.level > drunkLevel);
+  const handleInputFocus = () => {
+    if (selectedQuestion) setSelectedQuestion(null);
+  };
 
-  // ── Render ──────────────────────────────────────────────────────
+  const handleInputChange = (e) => {
+    setInputValue(e.target.value);
+    if (e.target.value) setSelectedQuestion(null);
+  };
+
+  const handleAsk = () => {
+    const question = selectedQuestion || inputValue.trim();
+    if (question) onSelectQuestion?.(question);
+  };
+
+  // ── Derived values ────────────────────────────────────────────────
+  const wheelTransition =
+    wheelPhase === 'spinning'
+      ? 'transform 2s cubic-bezier(0.17, 0.67, 0.12, 0.99)'
+      : 'none';
+
+  const canSpin = drunkPercent >= 20;
+
+  let btnText = 'Spin the Wheel';
+  let btnDisabled = false;
+  let btnOnClick = handleSpinClick;
+  if (wheelPhase === 'spinning') {
+    btnText = 'Spinning';
+    btnDisabled = true;
+    btnOnClick = undefined;
+  } else if (wheelPhase === 'result') {
+    btnDisabled = false;
+    btnOnClick = handleResultAction;
+    btnText = resultTarget === 'character' ? 'Ask a Question' : 'Answer the Question';
+  } else if (!canSpin) {
+    btnDisabled = true;
+  }
+
+  const askActive = !!selectedQuestion || !!inputValue.trim();
+  const inputDisplayValue = selectedQuestion ? '' : inputValue;
+
+  // Progress bar fill: wraps every 20%
+  const barFill = drunkPercent >= 500 ? 100 : ((drunkPercent % 20) / 20 * 100);
+
+  // ── Render ────────────────────────────────────────────────────────
   return (
     <>
       {/* Overlay */}
       <div
         style={{
           ...s.overlay,
-          opacity: visible ? 1 : 0,
-          pointerEvents: visible ? 'auto' : 'none',
+          opacity: visible && !closing ? 1 : 0,
+          pointerEvents: visible && !closing ? 'auto' : 'none',
         }}
-        onClick={onClose}
+        onClick={handleClose}
       />
 
       {/* Panel */}
       <div
+        ref={panelRef}
         style={{
           ...s.panel,
-          transform: visible ? 'translateY(0)' : 'translateY(100%)',
+          ...(closing
+            ? {
+                ...closeStyle,
+                transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.7, 0.2), opacity 0.4s ease 0.1s, border-radius 0.4s ease',
+                overflow: 'hidden',
+              }
+            : {
+                transform: visible ? 'translateY(0)' : 'translateY(100%)',
+                opacity: 1,
+              }
+          ),
         }}
       >
-        {/* Drag handle */}
-        <div style={s.handleBar}>
-          <div style={s.handle} />
-        </div>
-
-        {/* ═══════════ ROULETTE STATE ═══════════ */}
-        <div
-          style={{
-            ...s.stateContainer,
-            opacity: panelState === 'roulette' ? 1 : 0,
-            transform: panelState === 'roulette' ? 'translateX(0)' : 'translateX(-30px)',
-            pointerEvents: panelState === 'roulette' ? 'auto' : 'none',
-            position: panelState === 'roulette' ? 'relative' : 'absolute',
-            width: '100%',
-          }}
-        >
-          <h3 style={s.title}>🎲 真心话</h3>
-
-          {demoMode === 'B' && (
-            <DrunkennessBar
-              drunkLevel={drunkLevel}
-              drunkProgress={drunkProgress}
-              onGiftWine={onGiftWine}
-            />
-          )}
-
-          {/* Two circles */}
-          <div style={s.circlesRow}>
-            {/* User circle */}
-            <div style={s.circleWrapper}>
-              <div
-                style={{
-                  ...s.circle,
-                  ...(highlightIndex === 0 && spinning ? s.circleActive : {}),
-                  ...(highlightIndex === 0 && !spinning && spinning === false
-                    ? {}
-                    : {}),
-                }}
-              >
-                <div
-                  style={{
-                    ...s.circleGlow,
-                    opacity: highlightIndex === 0 ? 1 : 0,
-                  }}
-                />
-                <span style={s.circleEmoji}>👤</span>
-              </div>
-              <span style={s.circleLabel}>You</span>
-            </div>
-
-            {/* VS indicator */}
-            <div style={s.vsContainer}>
-              <span style={{ ...s.vsText, ...(spinning ? s.vsPulse : {}) }}>VS</span>
-            </div>
-
-            {/* Character circle */}
-            <div style={s.circleWrapper}>
-              <div
-                style={{
-                  ...s.circle,
-                  ...s.circleCharacter,
-                  ...(highlightIndex === 1 && spinning ? s.circleActive : {}),
-                }}
-              >
-                <div
-                  style={{
-                    ...s.circleGlow,
-                    opacity: highlightIndex === 1 ? 1 : 0,
-                  }}
-                />
-                <span style={s.circleEmoji}>🎭</span>
-              </div>
-              <span style={s.circleLabel}>Prisoner</span>
-            </div>
+        {/* Header: drag handle + close button */}
+        <div style={s.headerRow}>
+          <div style={s.handleBar}>
+            <div style={s.handle} />
           </div>
-
-          {/* Start button */}
-          <button
-            style={{
-              ...s.startBtn,
-              ...(spinning ? s.startBtnDisabled : {}),
-            }}
-            onClick={startSpin}
-            disabled={spinning}
-          >
-            {spinning ? '抽选中...' : '开始'}
+          <button style={s.closeBtn} onClick={handleClose} aria-label="Close">
+            ✕
           </button>
         </div>
 
-        {/* ═══════════ QUESTION BANK STATE ═══════════ */}
-        <div
-          style={{
-            ...s.stateContainer,
-            opacity: panelState === 'questionBank' ? 1 : 0,
-            transform: panelState === 'questionBank' ? 'translateX(0)' : 'translateX(30px)',
-            pointerEvents: panelState === 'questionBank' ? 'auto' : 'none',
-            position: panelState === 'questionBank' ? 'relative' : 'absolute',
-            width: '100%',
-          }}
-        >
-          <h3 style={s.title}>🎲 真心话 → 角色回答</h3>
+        {/* Scrollable content */}
+        <div style={s.scrollContainer}>
 
-          {demoMode === 'B' && (
-            <DrunkennessBar
-              drunkLevel={drunkLevel}
-              drunkProgress={drunkProgress}
-              onGiftWine={onGiftWine}
-            />
-          )}
+          {/* ═══════════ TITLE ═══════════ */}
+          <h3 style={s.title}>Tidal Hearts</h3>
 
-          {/* Scrollable question list */}
-          <div style={s.questionList}>
-            {/* Available questions */}
-            {availableQuestions.map((q, idx) => {
-              const isSelected = selectedQuestion === q.text;
-              return (
-                <div
-                  key={`avail-${idx}`}
-                  style={{
-                    ...s.questionRow,
-                    ...(isSelected ? s.questionRowSelected : {}),
-                  }}
-                  onClick={() => {
-                    setSelectedQuestion(q.text);
-                    setCustomQuestion('');
-                  }}
-                >
-                  <div style={s.radioOuter}>
-                    {isSelected && <div style={s.radioInner} />}
-                  </div>
-                  <span style={s.questionLevel}>Lv.{q.level}</span>
-                  <span style={s.questionText}>{q.text}</span>
-                </div>
-              );
-            })}
+          {/* ═══════════ SECTION 1: HEAT LEVEL ═══════════ */}
+          <div style={s.sectionBox}>
+            <div style={s.sectionLabel}>Heat Level</div>
 
-            {/* Unavailable (level too high but not locked) */}
-            {unavailableQuestions.map((q, idx) => (
-              <div key={`unavail-${idx}`} style={{ ...s.questionRow, ...s.questionRowLocked }}>
-                <div style={{ ...s.radioOuter, opacity: 0.3 }} />
-                <span style={{ ...s.questionLevel, opacity: 0.4 }}>Lv.{q.level}</span>
-                <span style={{ ...s.questionText, opacity: 0.4 }}>🔒 {q.text}</span>
+            <p style={s.ruleText}>
+              {characterName}'s heat level shapes how {characterName} talks in Inbox.
+              Hit 20% to unlock Heart Reveal and dig deeper.
+              Heads up — heat level fades 20% every hour.
+            </p>
+
+            {/* Drunk progress + Send drink */}
+            <div style={s.drunkSection}>
+              <div style={s.drunkHeader}>
+                <span style={s.drunkLabel}>{getHeatStatus(drunkPercent)}</span>
+                <span style={s.drunkPercentText}>{drunkPercent}%</span>
               </div>
-            ))}
-
-            {/* Locked high-level questions */}
-            {LOCKED_QUESTIONS.map((q, idx) => (
-              <div key={`locked-${idx}`} style={{ ...s.questionRow, ...s.questionRowLocked }}>
-                <div style={{ ...s.radioOuter, opacity: 0.3 }} />
-                <span style={{ ...s.questionLevel, opacity: 0.4 }}>Lv.{q.level}</span>
-                <span style={{ ...s.questionText, opacity: 0.4 }}>🔒 {q.text}</span>
+              <div style={s.drunkTrack}>
+                <div style={{
+                  ...s.drunkFill,
+                  width: `${barFill}%`,
+                }} />
               </div>
-            ))}
+              <div style={s.drunkRow}>
+                <span style={s.drunkDesc}>Send drinks to raise heat level</span>
+                <button style={s.drunkSendBtn} onClick={handleSendDrink}>
+                  🍷 <span style={s.drunkInv}>×{drinkInventory}</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Custom question input */}
-          <div style={s.customInputRow}>
-            <input
-              type="text"
-              placeholder="输入自定义问题..."
-              value={customQuestion}
-              onChange={(e) => {
-                setCustomQuestion(e.target.value);
-                if (e.target.value.trim()) setSelectedQuestion(null);
+          {/* Divider */}
+          <div style={s.divider} />
+
+          {/* ═══════════ SECTION 2: HEART REVEAL ═══════════ */}
+          <div style={s.sectionBox}>
+            <div style={s.sectionLabel}>Heart Reveal</div>
+
+            <p style={s.ruleText}>
+              Spin the wheel to pick who answers.
+            </p>
+
+            {/* Wheel */}
+            <div style={s.wheelWrapper}>
+              <div style={s.pointer}>▼</div>
+              <svg
+                viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
+                style={{ width: WHEEL_SIZE, height: WHEEL_SIZE, display: 'block', marginTop: 14 }}
+              >
+                <circle
+                  cx={WHEEL_CX} cy={WHEEL_CY} r={WHEEL_R + 4}
+                  fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2"
+                />
+                <g style={{
+                  transform: `rotate(${wheelRotation}deg)`,
+                  transformOrigin: `${WHEEL_CX}px ${WHEEL_CY}px`,
+                  transition: wheelTransition,
+                }}>
+                  <path d={RIGHT_PATH} fill="#e85d75" />
+                  <path d={LEFT_PATH} fill="#7c5cbf" />
+                  <line
+                    x1={WHEEL_CX} y1={WHEEL_CY - WHEEL_R}
+                    x2={WHEEL_CX} y2={WHEEL_CY + WHEEL_R}
+                    stroke="rgba(255,255,255,0.25)" strokeWidth="1.5"
+                  />
+                  <text x={WHEEL_CX + WHEEL_R * 0.5} y={WHEEL_CY}
+                    textAnchor="middle" dominantBaseline="central"
+                    fill="#fff" fontSize="12" fontWeight="600">{characterName}</text>
+                  <text x={WHEEL_CX - WHEEL_R * 0.5} y={WHEEL_CY}
+                    textAnchor="middle" dominantBaseline="central"
+                    fill="#fff" fontSize="12" fontWeight="600">{roleCardName}</text>
+                  <circle cx={WHEEL_CX} cy={WHEEL_CY} r="10" fill="#2d1520" />
+                  <circle cx={WHEEL_CX} cy={WHEEL_CY} r="4" fill="rgba(255,255,255,0.5)" />
+                  {resultTarget === 'character' && (
+                    <path d={RIGHT_PATH} fill="rgba(255,255,255,0.18)"
+                      style={{ animation: 'wheelWinPulse 1s ease infinite' }} />
+                  )}
+                  {resultTarget === 'user' && (
+                    <path d={LEFT_PATH} fill="rgba(255,255,255,0.18)"
+                      style={{ animation: 'wheelWinPulse 1s ease infinite' }} />
+                  )}
+                </g>
+              </svg>
+            </div>
+
+            {/* Legend */}
+            <div style={s.legendRow}>
+              <div style={{ ...s.legendItem, ...(resultTarget === 'character' ? s.legendItemActive : {}) }}>
+                <div style={{ ...s.legendDot, background: '#e85d75' }} />
+                <span>{characterName}</span>
+              </div>
+              <div style={{ ...s.legendItem, ...(resultTarget === 'user' ? s.legendItemActive : {}) }}>
+                <div style={{ ...s.legendDot, background: '#7c5cbf' }} />
+                <span>{roleCardName}</span>
+              </div>
+            </div>
+
+            {resultTarget && (
+              <div style={s.resultAnnounce}>
+                {resultTarget === 'character'
+                  ? `${characterName} answers!`
+                  : `${roleCardName} answers!`}
+              </div>
+            )}
+
+            {/* Spin / Result action button */}
+            <button
+              style={{
+                ...s.actionBtn,
+                ...(btnDisabled ? s.actionBtnDisabled : {}),
               }}
-              style={s.customInput}
-            />
+              onClick={btnOnClick}
+              disabled={wheelPhase === 'spinning'}
+            >
+              {btnText}
+            </button>
+          </div>
+        </div>
+
+        {/* ═══════════ QUESTION BANK OVERLAY ═══════════ */}
+        <div
+          style={{
+            ...s.qbOverlay,
+            opacity: showQuestionBank ? 1 : 0,
+            pointerEvents: showQuestionBank ? 'auto' : 'none',
+          }}
+        >
+          <div style={s.qbHeader}>
+            <button style={s.qbBackBtn} onClick={() => setShowQuestionBank(false)}>
+              &#8592;
+            </button>
+            <h3 style={s.qbTitle}>Tidal Hearts</h3>
+            <button style={s.closeBtn} onClick={handleClose} aria-label="Close">
+              ✕
+            </button>
           </div>
 
-          {/* Confirm button */}
-          <button
-            style={{
-              ...s.confirmBtn,
-              ...(!selectedQuestion && !customQuestion.trim() ? s.confirmBtnDisabled : {}),
-            }}
-            onClick={handleConfirm}
-            disabled={!selectedQuestion && !customQuestion.trim()}
-          >
-            确认
-          </button>
+          <div style={s.qbScrollContent}>
+            <p style={s.qbSubtitle}>What do you want to ask {characterName}?</p>
+
+            {/* Drunk progress in QB */}
+            <div style={{ ...s.drunkSection, padding: '0 20px 8px' }}>
+              <div style={s.drunkHeader}>
+                <span style={s.drunkLabel}>{getHeatStatus(drunkPercent)}</span>
+                <span style={s.drunkPercentText}>{drunkPercent}%</span>
+              </div>
+              <div style={s.drunkTrack}>
+                <div style={{
+                  ...s.drunkFill,
+                  width: `${barFill}%`,
+                }} />
+              </div>
+              <div style={s.drunkRow}>
+                <span style={s.drunkDesc}>Send drinks to raise heat level</span>
+                <button style={s.drunkSendBtn} onClick={handleSendDrink}>
+                  🍷 <span style={s.drunkInv}>×{drinkInventory}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Question options */}
+            <div style={s.optionsList}>
+              {displayedQuestions.map((q, idx) => {
+                const isSelected = selectedQuestion === q.text;
+                return (
+                  <div
+                    key={`opt-${idx}-${q.text}`}
+                    style={{
+                      ...s.optionRow,
+                      ...(isSelected ? s.optionRowSelected : {}),
+                    }}
+                    onClick={() => handleSelectOption(q.text)}
+                  >
+                    <div style={isSelected ? s.radioActive : s.radio}>
+                      {isSelected && <div style={s.radioDot} />}
+                    </div>
+                    <span style={{ ...s.optionText, ...(isSelected ? s.optionTextSelected : {}) }}>
+                      {q.text}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {/* Refresh button */}
+              <div style={s.refreshRow}>
+                <button style={s.refreshBtn} onClick={refreshQuestions}>
+                  <span style={s.refreshIcon}>↻</span> Refresh
+                </button>
+              </div>
+            </div>
+
+            {/* Custom question input */}
+            <div style={s.askInputRow}>
+              <input
+                type="text"
+                placeholder="Type your question..."
+                value={inputDisplayValue}
+                onChange={handleInputChange}
+                onFocus={handleInputFocus}
+                style={s.askInput}
+              />
+            </div>
+
+            {/* Ask button */}
+            <button
+              style={{
+                ...s.askBtn,
+                ...(!askActive ? s.askBtnDisabled : {}),
+              }}
+              onClick={handleAsk}
+              disabled={!askActive}
+            >
+              Ask
+            </button>
+          </div>
         </div>
+
+        {/* ═══════════ NOT ENOUGH DRINKS POPUP ═══════════ */}
+        <NotEnoughPopup
+          visible={showNotEnough}
+          onClose={() => setShowNotEnough(false)}
+          characterName={characterName}
+        />
+
+        {/* ═══════════ TOAST ═══════════ */}
+        {toastText && (
+          <div
+            style={{
+              ...s.toast,
+              opacity: toastVisible ? 1 : 0,
+            }}
+          >
+            {toastText}
+          </div>
+        )}
       </div>
 
-      {/* Keyframe animations injected via style tag */}
       <style>{keyframes}</style>
     </>
   );
 }
 
-// ── Keyframe CSS (injected once) ────────────────────────────────────
+// ── Keyframe CSS ────────────────────────────────────────────────────
 const keyframes = `
-  @keyframes gamePanelPulse {
-    0%, 100% { box-shadow: 0 0 12px rgba(232, 93, 117, 0.3); }
-    50% { box-shadow: 0 0 28px rgba(232, 93, 117, 0.7); }
-  }
-  @keyframes gamePanelGlow {
-    0%, 100% { opacity: 0.5; }
+  @keyframes wheelWinPulse {
+    0%, 100% { opacity: 0; }
     50% { opacity: 1; }
   }
-  @keyframes vsBounce {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.25); }
+  @keyframes resultFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 `;
 
 // ── Styles ──────────────────────────────────────────────────────────
 const s = {
-  // Overlay
   overlay: {
     position: 'fixed',
     inset: 0,
@@ -414,13 +657,12 @@ const s = {
     transition: 'opacity 0.35s ease',
   },
 
-  // Panel
   panel: {
     position: 'fixed',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '60vh',
+    height: '75vh',
     maxWidth: '430px',
     margin: '0 auto',
     background: 'linear-gradient(180deg, #2d1520 0%, #1a0a0a 100%)',
@@ -428,19 +670,24 @@ const s = {
     zIndex: 910,
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
     overflow: 'hidden',
     transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     color: '#fff',
   },
 
-  // Drag handle
-  handleBar: {
+  headerRow: {
     width: '100%',
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
     padding: '10px 0 4px',
+    flexShrink: 0,
+  },
+  handleBar: {
+    display: 'flex',
+    justifyContent: 'center',
     cursor: 'grab',
   },
   handle: {
@@ -449,208 +696,394 @@ const s = {
     borderRadius: '2px',
     background: 'rgba(255, 255, 255, 0.2)',
   },
-
-  // State container (shared wrapper for both states)
-  stateContainer: {
+  closeBtn: {
+    position: 'absolute',
+    right: '12px',
+    top: '8px',
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    background: 'rgba(255, 255, 255, 0.08)',
+    border: 'none',
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: '14px',
+    cursor: 'pointer',
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1,
+  },
+
+  scrollContainer: {
     flex: 1,
     overflowY: 'auto',
     overflowX: 'hidden',
-    transition: 'opacity 0.35s ease, transform 0.35s ease',
-    paddingBottom: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    paddingBottom: '20px',
   },
 
-  // Title
   title: {
     fontSize: '18px',
     fontWeight: '700',
     color: '#ffd6dd',
-    margin: '8px 0 10px',
+    margin: '4px 0 10px',
     letterSpacing: '0.5px',
   },
 
-  // ── Roulette circles ──────────────────────────────────────────
-  circlesRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '20px',
-    margin: '20px 0 28px',
+  sectionBox: {
     width: '100%',
-    padding: '0 24px',
+    padding: '0 20px',
     boxSizing: 'border-box',
   },
-  circleWrapper: {
+  sectionLabel: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#ff8fa3',
+    textTransform: 'uppercase',
+    letterSpacing: '0.8px',
+    marginBottom: '10px',
+  },
+
+  ruleText: {
+    fontSize: '12px',
+    color: 'rgba(255, 255, 255, 0.55)',
+    lineHeight: '1.5',
+    margin: '0 0 10px',
+  },
+
+  // Drunk progress section
+  drunkSection: {
+    width: '100%',
+    marginBottom: '12px',
+  },
+  drunkHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '4px',
+  },
+  drunkLabel: {
+    fontSize: '13px',
+    fontWeight: 700,
+    color: '#ff8fa3',
+  },
+  drunkPercentText: {
+    fontSize: '13px',
+    fontWeight: 700,
+    color: '#ffd6dd',
+  },
+  drunkTrack: {
+    height: '6px',
+    borderRadius: '3px',
+    background: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
+    marginBottom: '6px',
+  },
+  drunkFill: {
+    height: '100%',
+    borderRadius: '3px',
+    background: 'linear-gradient(90deg, #e85d75, #ff8fa3)',
+    transition: 'width 0.4s ease',
+  },
+  drunkRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  drunkDesc: {
+    fontSize: '11px',
+    color: 'rgba(255, 255, 255, 0.35)',
+  },
+  drunkSendBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 12px',
+    background: 'linear-gradient(135deg, #e85d75, #c94060)',
+    border: 'none',
+    borderRadius: '12px',
+    color: '#fff',
+    fontSize: '12px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  drunkInv: {
+    fontSize: '11px',
+    opacity: 0.7,
+  },
+
+  divider: {
+    width: 'calc(100% - 40px)',
+    height: '1px',
+    background: 'rgba(255, 255, 255, 0.08)',
+    margin: '8px 0 14px',
+  },
+
+  // Wheel
+  wheelWrapper: {
+    position: 'relative',
+    width: WHEEL_SIZE,
+    height: WHEEL_SIZE + 16,
+    margin: '4px auto 4px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '10px',
   },
-  circle: {
-    width: '88px',
-    height: '88px',
-    borderRadius: '50%',
-    background: 'linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
-    border: '2px solid rgba(255, 255, 255, 0.12)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-    overflow: 'hidden',
-  },
-  circleCharacter: {
-    background: 'linear-gradient(145deg, rgba(232, 93, 117, 0.15), rgba(201, 64, 96, 0.08))',
-    border: '2px solid rgba(232, 93, 117, 0.2)',
-  },
-  circleActive: {
-    borderColor: '#e85d75',
-    boxShadow: '0 0 20px rgba(232, 93, 117, 0.5)',
-    animation: 'gamePanelPulse 0.6s ease infinite',
-  },
-  circleGlow: {
+  pointer: {
     position: 'absolute',
-    inset: '-4px',
-    borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(232, 93, 117, 0.25) 0%, transparent 70%)',
-    transition: 'opacity 0.15s ease',
-    pointerEvents: 'none',
-    animation: 'gamePanelGlow 1s ease infinite',
-  },
-  circleEmoji: {
-    fontSize: '36px',
-    position: 'relative',
-    zIndex: 1,
-  },
-  circleLabel: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.7)',
-    letterSpacing: '0.3px',
+    top: 0,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 2,
+    fontSize: '18px',
+    lineHeight: 1,
+    color: '#fff',
+    filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))',
   },
 
-  // VS
-  vsContainer: {
+  legendRow: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: '20px',
+    gap: '24px',
+    margin: '6px 0 2px',
   },
-  vsText: {
-    fontSize: '16px',
-    fontWeight: '800',
-    color: 'rgba(255, 255, 255, 0.3)',
-    letterSpacing: '2px',
-    transition: 'color 0.2s ease',
+  legendItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '13px',
+    color: 'rgba(255, 255, 255, 0.5)',
+    transition: 'color 0.3s ease',
   },
-  vsPulse: {
-    color: '#e85d75',
-    animation: 'vsBounce 0.5s ease infinite',
+  legendItemActive: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  legendDot: {
+    width: '10px',
+    height: '10px',
+    borderRadius: '50%',
+    flexShrink: 0,
   },
 
-  // Start button
-  startBtn: {
-    width: '200px',
+  resultAnnounce: {
+    fontSize: '15px',
+    fontWeight: '700',
+    color: '#ffd6dd',
+    margin: '4px 0 2px',
+    animation: 'resultFadeIn 0.4s ease',
+    textAlign: 'center',
+  },
+
+  actionBtn: {
+    width: '220px',
     padding: '14px 0',
-    fontSize: '17px',
+    fontSize: '16px',
     fontWeight: '700',
     color: '#fff',
     background: 'linear-gradient(135deg, #e85d75, #c94060)',
     border: 'none',
     borderRadius: '28px',
     cursor: 'pointer',
-    letterSpacing: '1px',
+    letterSpacing: '0.5px',
     boxShadow: '0 4px 20px rgba(232, 93, 117, 0.35)',
     transition: 'opacity 0.2s ease, transform 0.15s ease',
-    marginTop: 'auto',
-    marginBottom: '8px',
+    margin: '12px auto 8px',
+    display: 'block',
   },
-  startBtnDisabled: {
-    opacity: 0.6,
+  actionBtnDisabled: {
+    opacity: 0.45,
     cursor: 'not-allowed',
     transform: 'none',
+    boxShadow: 'none',
   },
 
-  // ── Question bank ─────────────────────────────────────────────
-  questionList: {
-    width: '100%',
+  // Toast
+  toast: {
+    position: 'absolute',
+    top: '50px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: 'rgba(60, 40, 120, 0.92)',
+    color: '#fff',
+    padding: '10px 22px',
+    borderRadius: '22px',
+    fontSize: '13px',
+    fontWeight: 600,
+    zIndex: 30,
+    pointerEvents: 'none',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+    whiteSpace: 'nowrap',
+    transition: 'opacity 0.4s ease',
+    maxWidth: '90%',
+    textAlign: 'center',
+  },
+
+  // ── Question bank overlay ─────────────────────────────────────────
+  qbOverlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(180deg, #2d1520 0%, #1a0a0a 100%)',
+    display: 'flex',
+    flexDirection: 'column',
+    transition: 'opacity 0.3s ease',
+    zIndex: 5,
+    borderRadius: '20px 20px 0 0',
+  },
+  qbHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '12px 12px 8px',
+    flexShrink: 0,
+  },
+  qbBackBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#ffd6dd',
+    fontSize: '20px',
+    cursor: 'pointer',
+    padding: '4px 8px 4px 0',
+    lineHeight: 1,
+  },
+  qbTitle: {
+    fontSize: '18px',
+    fontWeight: '700',
+    color: '#ffd6dd',
+    flex: 1,
+    margin: 0,
+    letterSpacing: '0.5px',
+  },
+  qbScrollContent: {
     flex: 1,
     overflowY: 'auto',
+    overflowX: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    paddingBottom: '20px',
+  },
+  qbSubtitle: {
+    fontSize: '14px',
+    color: 'rgba(255, 255, 255, 0.55)',
+    margin: '0 0 10px',
+  },
+
+  optionsList: {
+    width: '100%',
     padding: '0 16px',
     boxSizing: 'border-box',
   },
-  questionRow: {
+  optionRow: {
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
-    padding: '12px 14px',
-    margin: '4px 0',
+    padding: '10px 14px',
+    margin: '3px 0',
     borderRadius: '12px',
     background: 'rgba(255, 255, 255, 0.04)',
     cursor: 'pointer',
     transition: 'background 0.2s ease, border-color 0.2s ease',
-    border: '1px solid transparent',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'transparent',
   },
-  questionRowSelected: {
+  optionRowSelected: {
     background: 'rgba(232, 93, 117, 0.12)',
     borderColor: 'rgba(232, 93, 117, 0.4)',
   },
-  questionRowLocked: {
-    cursor: 'default',
-    opacity: 0.6,
-  },
-  radioOuter: {
-    width: '18px',
-    height: '18px',
+
+  radio: {
+    width: '16px',
+    height: '16px',
     borderRadius: '50%',
-    border: '2px solid rgba(255, 255, 255, 0.25)',
+    borderWidth: '2px',
+    borderStyle: 'solid',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    transition: 'border-color 0.2s ease',
+  },
+  radioActive: {
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    borderWidth: '2px',
+    borderStyle: 'solid',
+    borderColor: '#e85d75',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  radioInner: {
-    width: '10px',
-    height: '10px',
+  radioDot: {
+    width: '8px',
+    height: '8px',
     borderRadius: '50%',
     background: '#e85d75',
   },
-  questionLevel: {
-    fontSize: '11px',
-    fontWeight: '700',
-    color: '#ff8fa3',
-    minWidth: '28px',
-    flexShrink: 0,
-  },
-  questionText: {
+
+  optionText: {
     fontSize: '14px',
     color: '#f0d6dc',
-    lineHeight: '1.4',
+    lineHeight: '1.35',
+    transition: 'color 0.2s ease',
+  },
+  optionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
   },
 
-  // Custom input
-  customInputRow: {
+  refreshRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    padding: '4px 0 0',
+  },
+  refreshBtn: {
+    background: 'none',
+    border: 'none',
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: '12px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 8px',
+    borderRadius: '8px',
+    transition: 'color 0.2s ease, background 0.2s ease',
+  },
+  refreshIcon: {
+    fontSize: '14px',
+    fontWeight: '700',
+  },
+
+  askInputRow: {
     width: '100%',
     padding: '8px 16px',
     boxSizing: 'border-box',
   },
-  customInput: {
+  askInput: {
     width: '100%',
     padding: '10px 14px',
     fontSize: '14px',
     color: '#f0d6dc',
     background: 'rgba(255, 255, 255, 0.06)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     borderRadius: '12px',
     outline: 'none',
     boxSizing: 'border-box',
     transition: 'border-color 0.2s ease',
+    fontFamily: 'inherit',
   },
 
-  // Confirm button
-  confirmBtn: {
+  askBtn: {
     width: '200px',
     padding: '14px 0',
     fontSize: '17px',
@@ -664,9 +1097,8 @@ const s = {
     boxShadow: '0 4px 20px rgba(232, 93, 117, 0.35)',
     transition: 'opacity 0.2s ease',
     margin: '8px 0',
-    flexShrink: 0,
   },
-  confirmBtnDisabled: {
+  askBtnDisabled: {
     opacity: 0.4,
     cursor: 'not-allowed',
   },

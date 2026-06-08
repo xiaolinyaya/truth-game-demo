@@ -8,6 +8,100 @@ const MOCK_MESSAGES = [
   { id: 'mock-5', sender: 'user', text: 'Hi~Yate', time: '10:12' },
 ];
 
+// ── Not Enough Drinks Popup ─────────────────────────────────────────
+function NotEnoughPopup({ visible, onClose }) {
+  if (!visible) return null;
+  return (
+    <>
+      <div style={popupStyles.overlay} onClick={onClose} />
+      <div style={popupStyles.container}>
+        <button style={popupStyles.closeBtn} onClick={onClose}>✕</button>
+        <div style={popupStyles.emoji}>🍷</div>
+        <h3 style={popupStyles.title}>Not Enough Drinks</h3>
+        <p style={popupStyles.text}>
+          You've run out of drinks to offer. Get more drinks to keep
+          the conversation going deeper.
+        </p>
+        <button style={popupStyles.actionBtn} onClick={onClose}>
+          Get More
+        </button>
+      </div>
+    </>
+  );
+}
+
+const popupStyles = {
+  overlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.6)',
+    zIndex: 100,
+  },
+  container: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: '280px',
+    background: 'linear-gradient(180deg, #2d1520 0%, #1a0a0a 100%)',
+    borderRadius: '20px',
+    padding: '28px 24px',
+    zIndex: 101,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '12px',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: '12px',
+    right: '12px',
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    background: 'rgba(255, 255, 255, 0.08)',
+    border: 'none',
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: '12px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1,
+  },
+  emoji: { fontSize: '40px' },
+  title: {
+    fontSize: '17px',
+    fontWeight: 700,
+    color: '#ffd6dd',
+    margin: 0,
+  },
+  text: {
+    fontSize: '13px',
+    color: 'rgba(255, 255, 255, 0.55)',
+    lineHeight: 1.5,
+    textAlign: 'center',
+    margin: 0,
+  },
+  actionBtn: {
+    marginTop: '4px',
+    padding: '10px 32px',
+    background: 'linear-gradient(135deg, #e85d75, #c94060)',
+    border: 'none',
+    borderRadius: '22px',
+    color: '#fff',
+    fontSize: '15px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 4px 16px rgba(232, 93, 117, 0.35)',
+  },
+};
+
+// ── Styles ──────────────────────────────────────────────────────────
 const styles = {
   container: {
     width: '100%',
@@ -68,54 +162,6 @@ const styles = {
     cursor: 'pointer',
     padding: '4px 0 4px 8px',
     lineHeight: 1,
-  },
-
-  /* --- Drunk Bar (Demo A) --- */
-  drunkBar: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '8px 16px',
-    background: 'rgba(50, 18, 18, 0.9)',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-    gap: '10px',
-    flexShrink: 0,
-  },
-  drunkIcon: {
-    fontSize: '18px',
-    flexShrink: 0,
-  },
-  drunkTrack: {
-    flex: 1,
-    height: '8px',
-    borderRadius: '4px',
-    background: 'rgba(255, 255, 255, 0.08)',
-    overflow: 'hidden',
-  },
-  drunkFill: {
-    height: '100%',
-    borderRadius: '4px',
-    background: 'linear-gradient(90deg, #c0392b, #e74c3c, #ff6b6b)',
-    transition: 'width 0.4s ease',
-  },
-  drunkLabel: {
-    color: '#ff9a8b',
-    fontSize: '13px',
-    fontWeight: 700,
-    minWidth: '32px',
-    textAlign: 'center',
-    flexShrink: 0,
-  },
-  giftWineBtn: {
-    background: 'linear-gradient(135deg, #c0392b, #a83227)',
-    color: '#ffeedd',
-    border: 'none',
-    borderRadius: '14px',
-    padding: '4px 12px',
-    fontSize: '12px',
-    fontWeight: 600,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-    flexShrink: 0,
   },
 
   /* --- Chat Area --- */
@@ -288,7 +334,7 @@ const styles = {
     color: '#e8c4b8',
     flexShrink: 0,
   },
-  diceBtn: {
+  activityBtn: {
     background: 'linear-gradient(135deg, #8e44ad, #9b59b6)',
     border: 'none',
     borderRadius: '50%',
@@ -298,9 +344,11 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    fontSize: '20px',
+    fontSize: '16px',
     flexShrink: 0,
     boxShadow: '0 2px 8px rgba(142, 68, 173, 0.4)',
+    gap: '1px',
+    letterSpacing: '-2px',
   },
 };
 
@@ -388,17 +436,18 @@ function MessageBubble({ msg }) {
 }
 
 export default function PhoneChatPage({
-  demoMode = 'A',
   onBack,
   onStartGame,
   onGiftWine,
   messages = [],
   showCharacterTyping = false,
   onSendMessage,
-  drunkLevel = 3,
-  drunkProgress = 45,
+  drinkInventory = 5,
+  truthUnlocked = false,
+  activityBtnRef,
 }) {
   const [inputText, setInputText] = useState('');
+  const [showNotEnough, setShowNotEnough] = useState(false);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -442,24 +491,6 @@ export default function PhoneChatPage({
         </button>
       </div>
 
-      {/* ===== Drunk Bar (Demo A only) ===== */}
-      {demoMode === 'A' && (
-        <div style={styles.drunkBar}>
-          <span style={styles.drunkIcon} role="img" aria-label="wine">
-            &#127863;
-          </span>
-          <div style={styles.drunkTrack}>
-            <div
-              style={{ ...styles.drunkFill, width: `${Math.min(100, Math.max(0, drunkProgress))}%` }}
-            />
-          </div>
-          <span style={styles.drunkLabel}>Lv.{drunkLevel}</span>
-          <button style={styles.giftWineBtn} onClick={onGiftWine}>
-            &#36865;&#37202;
-          </button>
-        </div>
-      )}
-
       {/* ===== Chat Area ===== */}
       <div className="phone-chat-area" style={styles.chatArea}>
         {allMessages.map((msg) => (
@@ -501,10 +532,22 @@ export default function PhoneChatPage({
         <button style={styles.micBtn} aria-label="Voice">
           &#127908;
         </button>
-        <button style={styles.diceBtn} onClick={onStartGame} aria-label="Start game">
-          &#127922;
+        {/* Activity button → opens GamePanel */}
+        <button
+          ref={activityBtnRef}
+          style={styles.activityBtn}
+          onClick={onStartGame}
+          aria-label="Activity"
+        >
+          <span>🍷</span><span style={{ fontSize: '14px' }}>🎲</span>
         </button>
       </div>
+
+      {/* ===== Not Enough Drinks Popup ===== */}
+      <NotEnoughPopup
+        visible={showNotEnough}
+        onClose={() => setShowNotEnough(false)}
+      />
     </div>
   );
 }

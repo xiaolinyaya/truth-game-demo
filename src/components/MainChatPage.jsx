@@ -228,7 +228,9 @@ const styles = {
     height: '56px',
     borderRadius: '14px',
     background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.35), rgba(108, 79, 207, 0.45))',
-    border: '1px solid rgba(168, 85, 247, 0.5)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'rgba(168, 85, 247, 0.5)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -238,6 +240,75 @@ const styles = {
     transition: 'all 0.2s ease',
     color: '#e0c4ff',
     boxShadow: '0 0 16px rgba(168, 85, 247, 0.25)',
+  },
+  truthButtonLocked: {
+    width: '56px',
+    height: '56px',
+    borderRadius: '14px',
+    background: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'rgba(140, 100, 220, 0.15)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'default',
+    gap: '3px',
+    transition: 'all 0.2s ease',
+    color: '#666',
+    opacity: 0.6,
+  },
+
+  // Unlock card
+  unlockCard: {
+    alignSelf: 'stretch',
+    padding: '4px 0',
+  },
+  unlockCardInner: {
+    background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(108, 79, 207, 0.2))',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'rgba(168, 85, 247, 0.35)',
+    borderRadius: '16px',
+    padding: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  unlockCardEmoji: {
+    fontSize: '32px',
+  },
+  unlockCardTextWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '6px',
+    textAlign: 'center',
+  },
+  unlockCardItalic: {
+    fontSize: '13px',
+    fontStyle: 'italic',
+    color: '#c4b5e0',
+  },
+  unlockCardDialogue: {
+    fontSize: '15px',
+    fontWeight: '600',
+    color: '#e0c4ff',
+    lineHeight: '1.45',
+  },
+  unlockCardBtn: {
+    marginTop: '4px',
+    padding: '8px 24px',
+    background: 'linear-gradient(135deg, #a855f7, #6c4fcf)',
+    borderRadius: '20px',
+    fontSize: '14px',
+    fontWeight: '700',
+    color: '#fff',
+    cursor: 'pointer',
+    boxShadow: '0 2px 12px rgba(168, 85, 247, 0.35)',
+    transition: 'transform 0.15s ease',
   },
 };
 
@@ -262,8 +333,17 @@ const mockMessages = [
   },
 ];
 
-export default function MainChatPage({ onEnterPhoneChat, onGiftWine }) {
+export default function MainChatPage({ onEnterPhoneChat, onGiftWine, truthUnlocked, mainChatMessages = [], drinkInventory = 5 }) {
   const [inputValue, setInputValue] = useState('');
+  const [showNotEnough, setShowNotEnough] = useState(false);
+
+  const handleGiftWine = () => {
+    if (drinkInventory <= 0) {
+      setShowNotEnough(true);
+      return;
+    }
+    onGiftWine?.('chat');
+  };
 
   return (
     <div style={styles.container}>
@@ -301,14 +381,41 @@ export default function MainChatPage({ onEnterPhoneChat, onGiftWine }) {
             </div>
           );
         })}
+
+        {/* Dynamic messages (unlock card, etc.) */}
+        {mainChatMessages.map((msg) => {
+          if (msg.type === 'unlock-card') {
+            return (
+              <div key={msg.id} style={styles.unlockCard}>
+                <div style={styles.unlockCardInner}>
+                  <span style={styles.unlockCardEmoji}>🍷</span>
+                  <div style={styles.unlockCardTextWrap}>
+                    <span style={styles.unlockCardItalic}>Prisoner seems a little tipsy now...</span>
+                    <span style={styles.unlockCardDialogue}>"既然都喝到这了... 要不我们来玩个真心话？"</span>
+                  </div>
+                  <div
+                    style={styles.unlockCardBtn}
+                    onClick={onEnterPhoneChat}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onEnterPhoneChat?.(); }}
+                  >
+                    来玩真心话 →
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })}
       </div>
 
       {/* Toolbar Row */}
       <div style={styles.toolbarRow}>
         <span style={styles.toolbarLabel}>TATW</span>
-        <div style={{...styles.toolbarCenter, cursor: 'pointer'}} onClick={onGiftWine}>
+        <div style={{...styles.toolbarCenter, cursor: 'pointer'}} onClick={handleGiftWine}>
           <span role="img" aria-label="wine">🍷</span>
-          <span>&times;9</span>
+          <span>&times;{drinkInventory}</span>
         </div>
         <div style={styles.toolbarRight}>
           <div style={styles.toolbarIcon}>⚙</div>
@@ -358,15 +465,104 @@ export default function MainChatPage({ onEnterPhoneChat, onGiftWine }) {
           role="button"
           tabIndex={0}
           aria-label="Truth Game"
-          onClick={onEnterPhoneChat}
+          onClick={() => onEnterPhoneChat?.()}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') onEnterPhoneChat?.();
           }}
         >
           <span style={styles.actionButtonIcon}>🎲</span>
-          <span style={styles.actionButtonLabel}>Truth</span>
+          <span style={styles.actionButtonLabel}>真心话</span>
         </div>
       </div>
+
+      {/* Not Enough Drinks Popup */}
+      {showNotEnough && (
+        <>
+          <div style={notEnoughS.overlay} onClick={() => setShowNotEnough(false)} />
+          <div style={notEnoughS.container}>
+            <button style={notEnoughS.closeBtn} onClick={() => setShowNotEnough(false)}>✕</button>
+            <div style={notEnoughS.emoji}>🍷</div>
+            <h3 style={notEnoughS.title}>Not Enough Drinks</h3>
+            <p style={notEnoughS.text}>
+              The glass is empty — top it up to keep going.
+            </p>
+            <button style={notEnoughS.actionBtn} onClick={() => setShowNotEnough(false)}>
+              Get More
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
+const notEnoughS = {
+  overlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.6)',
+    zIndex: 100,
+  },
+  container: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: '280px',
+    background: 'linear-gradient(180deg, #2d1520 0%, #1a0a0a 100%)',
+    borderRadius: '20px',
+    padding: '28px 24px',
+    zIndex: 101,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '12px',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: '12px',
+    right: '12px',
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    background: 'rgba(255, 255, 255, 0.08)',
+    border: 'none',
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: '12px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1,
+  },
+  emoji: { fontSize: '40px' },
+  title: {
+    fontSize: '17px',
+    fontWeight: 700,
+    color: '#ffd6dd',
+    margin: 0,
+  },
+  text: {
+    fontSize: '13px',
+    color: 'rgba(255, 255, 255, 0.55)',
+    lineHeight: 1.5,
+    textAlign: 'center',
+    margin: 0,
+  },
+  actionBtn: {
+    marginTop: '4px',
+    padding: '10px 32px',
+    background: 'linear-gradient(135deg, #e85d75, #c94060)',
+    border: 'none',
+    borderRadius: '22px',
+    color: '#fff',
+    fontSize: '15px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 4px 16px rgba(232, 93, 117, 0.35)',
+  },
+};

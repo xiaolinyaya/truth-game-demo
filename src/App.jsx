@@ -42,48 +42,6 @@ const styles = {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
 
-  // Toggle area
-  toggleArea: {
-    width: '100%',
-    maxWidth: '600px',
-    padding: '18px 20px 14px',
-    boxSizing: 'border-box',
-    textAlign: 'center',
-  },
-  toggleRow: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: '10px',
-    marginBottom: '8px',
-  },
-  toggleBtnBase: {
-    padding: '8px 18px',
-    borderRadius: '20px',
-    border: '2px solid transparent',
-    fontSize: '13px',
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'all 0.25s ease',
-    lineHeight: 1.4,
-  },
-  toggleBtnActive: {
-    background: 'linear-gradient(135deg, #e05555, #d44040)',
-    color: '#fff',
-    border: '2px solid #e05555',
-    boxShadow: '0 2px 12px rgba(224, 85, 85, 0.35)',
-  },
-  toggleBtnInactive: {
-    background: 'rgba(255,255,255,0.06)',
-    color: '#888',
-    border: '2px solid rgba(255,255,255,0.1)',
-  },
-  toggleDesc: {
-    fontSize: '12px',
-    color: '#777',
-    marginTop: '4px',
-    lineHeight: 1.5,
-  },
-
   // Phone frame
   phoneFrame: {
     width: '390px',
@@ -119,19 +77,17 @@ const styles = {
 
 // ── App Component ───────────────────────────────────────
 export default function App() {
-  // Demo mode
-  const [demoMode, setDemoMode] = useState('A');
-
   // Navigation
   const [currentPage, setCurrentPage] = useState('main');
 
   // Game state
-  const [drunkLevel, setDrunkLevel] = useState(3);
-  const [drunkProgress, setDrunkProgress] = useState(60);
+  const [drunkPercent, setDrunkPercent] = useState(0);
   const [messages, setMessages] = useState([]);
+  const [mainChatMessages, setMainChatMessages] = useState([]);
   const [showCharacterTyping, setShowCharacterTyping] = useState(false);
   const [gamePanelVisible, setGamePanelVisible] = useState(false);
-  const [panelState, setPanelState] = useState('roulette');
+  const [truthUnlocked, setTruthUnlocked] = useState(false);
+  const [drinkInventory, setDrinkInventory] = useState(5);
 
   // Toast
   const [toastText, setToastText] = useState('');
@@ -139,6 +95,8 @@ export default function App() {
 
   // Timer refs for cleanup
   const timersRef = useRef([]);
+  const activityBtnRef = useRef(null);
+  const unlockCardSentRef = useRef(false);
 
   const addTimer = useCallback((fn, ms) => {
     const id = setTimeout(fn, ms);
@@ -166,22 +124,18 @@ export default function App() {
     setCurrentPage('phone');
     addTimer(() => {
       setGamePanelVisible(true);
-      setPanelState('roulette');
     }, 800);
   }, [addTimer]);
 
   // ── Flow: Start game (from phone chat toolbar) ──
   const onStartGame = useCallback(() => {
     setGamePanelVisible(true);
-    setPanelState('roulette');
   }, []);
 
-  // ── Flow: Roulette result ──
+  // ── Flow: Roulette result (only 'user' comes here; 'character' handled inside GamePanel) ──
   const onRouletteResult = useCallback(
     (result) => {
-      if (result === 'character') {
-        setPanelState('questionBank');
-      } else if (result === 'user') {
+      if (result === 'user') {
         setGamePanelVisible(false);
         addTimer(() => {
           const question = pickRandom(CHARACTER_QUESTIONS);
@@ -275,17 +229,37 @@ export default function App() {
   );
 
   // ── Flow: Gift wine ──
-  const onGiftWine = useCallback(() => {
-    showToast('\uD83C\uDF77 送酒成功！醉意值 +10');
-    setDrunkProgress((prev) => {
-      const next = prev + 10;
-      if (next > 100) {
-        setDrunkLevel((lvl) => lvl + 1);
-        return next - 100;
+  const onGiftWine = useCallback((source) => {
+    if (drinkInventory <= 0) return false;
+
+    setDrinkInventory((prev) => prev - 1);
+    showToast('\uD83C\uDF77 Drink sent! +10%');
+
+    setDrunkPercent((prev) => {
+      const next = Math.min(500, prev + 10);
+
+      // Unlock card at 20% — only once, only from main chat
+      if (source === 'chat' && next >= 20 && !unlockCardSentRef.current) {
+        unlockCardSentRef.current = true;
+        setTruthUnlocked(true);
+        addTimer(() => {
+          setMainChatMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now(),
+              type: 'unlock-card',
+              text: '',
+              time: now_HHMM(),
+            },
+          ]);
+        }, 800);
       }
+
       return next;
     });
-  }, [showToast]);
+
+    return true;
+  }, [showToast, addTimer, drinkInventory]);
 
   // ── Flow: Back to main ──
   const onBack = useCallback(() => {
@@ -294,7 +268,6 @@ export default function App() {
     setMessages([]);
     setShowCharacterTyping(false);
     setGamePanelVisible(false);
-    setPanelState('roulette');
   }, [clearAllTimers]);
 
   // ── Flow: Close game panel ──
@@ -307,39 +280,8 @@ export default function App() {
     return () => clearAllTimers();
   }, [clearAllTimers]);
 
-  // ── Descriptions per mode ──
-  const demoDescriptions = {
-    A: '小手机顶部显示醉意进度条和送酒入口',
-    B: '小手机保持纯净聊天，醉意值收进游戏面板',
-  };
-
   return (
     <div style={styles.page}>
-      {/* ── Demo Mode Toggle ── */}
-      <div style={styles.toggleArea}>
-        <div style={styles.toggleRow}>
-          <button
-            style={{
-              ...styles.toggleBtnBase,
-              ...(demoMode === 'A' ? styles.toggleBtnActive : styles.toggleBtnInactive),
-            }}
-            onClick={() => setDemoMode('A')}
-          >
-            方案 A: 醉意值在聊天页
-          </button>
-          <button
-            style={{
-              ...styles.toggleBtnBase,
-              ...(demoMode === 'B' ? styles.toggleBtnActive : styles.toggleBtnInactive),
-            }}
-            onClick={() => setDemoMode('B')}
-          >
-            方案 B: 醉意值在游戏面板
-          </button>
-        </div>
-        <div style={styles.toggleDesc}>{demoDescriptions[demoMode]}</div>
-      </div>
-
       {/* ── Phone Frame ── */}
       <div style={styles.phoneFrame}>
         {/* Toast Notification */}
@@ -356,32 +298,39 @@ export default function App() {
 
         {/* Page Router */}
         {currentPage === 'main' && (
-          <MainChatPage onEnterPhoneChat={onEnterPhoneChat} onGiftWine={onGiftWine} />
+          <MainChatPage
+            onEnterPhoneChat={onEnterPhoneChat}
+            onGiftWine={onGiftWine}
+            truthUnlocked={truthUnlocked}
+            mainChatMessages={mainChatMessages}
+            drinkInventory={drinkInventory}
+          />
         )}
 
         {currentPage === 'phone' && (
           <>
             <PhoneChatPage
-              demoMode={demoMode}
               onBack={onBack}
               onStartGame={onStartGame}
               onGiftWine={onGiftWine}
               messages={messages}
               showCharacterTyping={showCharacterTyping}
               onSendMessage={onSendMessage}
-              drunkLevel={drunkLevel}
-              drunkProgress={drunkProgress}
+              truthUnlocked={truthUnlocked}
+              drinkInventory={drinkInventory}
+              activityBtnRef={activityBtnRef}
             />
             <GamePanel
-              panelState={panelState}
-              demoMode={demoMode}
-              drunkLevel={drunkLevel}
-              drunkProgress={drunkProgress}
+              drunkPercent={drunkPercent}
+              drinkInventory={drinkInventory}
               onRouletteResult={onRouletteResult}
               onSelectQuestion={onSelectQuestion}
               onClose={onClosePanel}
               onGiftWine={onGiftWine}
               visible={gamePanelVisible}
+              characterName="Prisoner"
+              roleCardName="Kate"
+              anchorRef={activityBtnRef}
             />
           </>
         )}
